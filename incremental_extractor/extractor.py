@@ -18,6 +18,9 @@ from .smart_outcome_extractor import SmartOutcomeExtractor
 from .smart_validator import SmartValidator
 from .filename_extractor import FilenameExtractor
 from .chunked_extractor import ChunkedExtractor
+from .config import config
+from .intelligent_chunker import IntelligentChunker
+from .chunk_mapper import ChunkMapper
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,20 @@ class IncrementalExtractor:
         
         # Initialize chunked extractor for large documents
         self.chunked_extractor = ChunkedExtractor()
+        
+        # Initialize intelligent chunking if enabled
+        self.config = config
+        if self.config.use_intelligent_chunking:
+            self.intelligent_chunker = IntelligentChunker(
+                chunk_size=self.config.chunk_size,
+                overlap_size=self.config.chunk_overlap
+            )
+            self.chunk_mapper = ChunkMapper(model=self.config.chunk_analysis_model)
+            logger.info("Intelligent chunking enabled")
+        else:
+            self.intelligent_chunker = None
+            self.chunk_mapper = None
+            logger.info("Using traditional extraction")
     
     def extract_from_pdf(self, pdf_path: str, nct_number: str, pdf_type: str,
                         resume: bool = True, compare_immediately: bool = True,
@@ -140,6 +157,22 @@ class IncrementalExtractor:
         # Get fields to extract (prioritized)
         pending_fields = self._get_pending_fields(checkpoint)
         
+        # Use intelligent chunking if enabled
+        chunk_mappings = None
+        document_chunks = None
+        if self.config.use_intelligent_chunking and self.intelligent_chunker:
+            logger.info("Using intelligent chunking for extraction")
+            # Create chunks
+            document_chunks = self.intelligent_chunker.chunk_document(pdf_text)
+            
+            # Analyze chunks to find field locations
+            logger.info(f"Analyzing {len(document_chunks)} chunks for field mapping...")
+            chunk_mappings = self.chunk_mapper.analyze_chunks(document_chunks)
+            
+            # Create extraction plan
+            extraction_plan = self.chunk_mapper.create_extraction_plan(chunk_mappings)
+            logger.info(f"Extraction plan created for {len(extraction_plan)} fields")
+        
         # Group fields for efficient extraction
         field_groups = self.prompt_builder.get_optimal_field_groups(pending_fields, pdf_type)
         
@@ -160,7 +193,15 @@ class IncrementalExtractor:
                 if len(field_group) == 1:
                     # Single field extraction
                     field_name = field_group[0]
-                    value = self._extract_single_field(field_name, pdf_text, pdf_type, pdf_path)
+                    
+                    # Use intelligent chunking if available
+                    if chunk_mappings and document_chunks and extraction_plan and field_name in extraction_plan:
+                        chunk_id = extraction_plan[field_name]
+                        chunk_text = document_chunks[chunk_id].text
+                        logger.info(f"Using chunk {chunk_id} for {field_name} (intelligent mapping)")
+                        value = self._extract_single_field(field_name, chunk_text, pdf_type, pdf_path)
+                    else:
+                        value = self._extract_single_field(field_name, pdf_text, pdf_type, pdf_path)
                     
                     # Validate against filename for NCT number
                     if field_name == 'nct_number' and value:
@@ -183,7 +224,20 @@ class IncrementalExtractor:
                 
                 else:
                     # Batch extraction
-                    results = self._extract_batch_fields(field_group, pdf_text, pdf_type)
+                    # For batch, we'll use intelligent chunking if all fields in the group map to the same chunk
+                    batch_chunk_text = None
+                    if chunk_mappings and document_chunks and extraction_plan:
+                        chunk_ids = [extraction_plan.get(field) for field in field_group if field in extraction_plan]
+                        if chunk_ids and all(cid == chunk_ids[0] for cid in chunk_ids):
+                            # All fields map to the same chunk
+                            chunk_id = chunk_ids[0]
+                            batch_chunk_text = document_chunks[chunk_id].text
+                            logger.info(f"Using chunk {chunk_id} for batch extraction of {field_group}")
+                    
+                    if batch_chunk_text:
+                        results = self._extract_batch_fields(field_group, batch_chunk_text, pdf_type)
+                    else:
+                        results = self._extract_batch_fields(field_group, pdf_text, pdf_type)
                     
                     for field_name, value in results.items():
                         self.checkpoint_manager.update_field_status(
@@ -500,3 +554,18 @@ class IncrementalExtractor:
             pdf_type,
             resume=True
         )
+    
+    def set_intelligent_chunking(self, enabled: bool) -> None:
+        """Enable or disable intelligent chunking at runtime"""
+        self.config.use_intelligent_chunking = enabled
+        
+        if enabled and not self.intelligent_chunker:
+            # Initialize intelligent chunking components
+            self.intelligent_chunker = IntelligentChunker(
+                chunk_size=self.config.chunk_size,
+                overlap_size=self.config.chunk_overlap
+            )
+            self.chunk_mapper = ChunkMapper(model=self.config.chunk_analysis_model)
+            logger.info("Intelligent chunking enabled")
+        elif not enabled:
+            logger.info("Intelligent chunking disabled")
