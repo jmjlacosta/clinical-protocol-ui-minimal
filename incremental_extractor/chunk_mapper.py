@@ -11,7 +11,9 @@ from .intelligent_chunker import DocumentChunk
 
 try:
     from openai import OpenAI
-    client = OpenAI()
+    import os
+    api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+    client = OpenAI(api_key=api_key) if api_key else None
 except ImportError:
     client = None
 
