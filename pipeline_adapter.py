@@ -154,6 +154,7 @@ class PipelineAdapter:
                     extraction_dict = {
                         'nct_number': checkpoint.nct_number,
                         'pdf_type': checkpoint.pdf_type,
+                        'pdf_path': pdf_path,  # Add the missing pdf_path
                         'fields': {
                             field_name: {
                                 'value': field.value,

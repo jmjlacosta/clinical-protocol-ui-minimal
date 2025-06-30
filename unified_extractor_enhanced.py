@@ -20,7 +20,7 @@ class EnhancedUnifiedExtractor:
         self.results_dir.mkdir(parents=True, exist_ok=True)
         
         # Initialize intelligent comparator
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
         self.comparator = IntelligentComparator(api_key) if api_key else None
         
     def get_trial_documents(self, nct_number: str) -> List[Tuple[str, str]]:
