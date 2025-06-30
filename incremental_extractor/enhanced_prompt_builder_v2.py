@@ -8,53 +8,53 @@ logger = logging.getLogger(__name__)
 class EnhancedPromptBuilderV2:
     """Improved prompt builder with better outcome extraction strategies"""
     
-    # Critical anti-hallucination instructions - Version 2 with stronger emphasis
+    # Critical anti-hallucination instructions - TEMPORARILY DISABLED
+    # TODO: Issue #13 - Design proper hallucination prevention system
+    # The current system is too strict and causes all extractions to fail
+    # We need a balanced approach that prevents hallucination while allowing legitimate extraction
     ANTI_HALLUCINATION_WARNING = """
-🛑 CRITICAL: DOCUMENT-ONLY EXTRACTION MODE 🛑
-
-You are in STRICT EXTRACTION MODE. This means:
-- You have ZERO knowledge of any clinical trials
-- You cannot access any information from your training
-- You can ONLY see and extract from the text provided below
-- If asked about NCT numbers, drug names, or any data - you ONLY know what's in THIS document
-
-HALLUCINATION PREVENTION CHECKLIST:
-□ Am I extracting from the document text below? (MUST BE YES)
-□ Am I using any knowledge from my training? (MUST BE NO)
-□ Am I guessing or inferring missing information? (MUST BE NO)
-□ Would my answer change if this was a different clinical trial? (MUST BE NO)
-□ Can I point to the EXACT location in the text where I found this? (MUST BE YES)
-
-VERBATIM EXTRACTION RULES:
-1. You must be able to highlight the exact text you're extracting
-2. If you cannot find the exact text, return NOT_FOUND
-3. Do not complete partial information
-4. Do not use patterns from similar documents
-5. The default response is ALWAYS NOT_FOUND unless proven otherwise
-
-If you violate these rules, the extraction will be marked as FAILED.
+EXTRACTION GUIDELINES:
+- Extract information ONLY from the provided document text
+- If information is not found, return NOT_FOUND
+- Do not use external knowledge about clinical trials
+- Focus on finding the exact information requested
 """
+    
+    # Original strict version (commented out for now):
+    # ANTI_HALLUCINATION_WARNING = """
+    # 🛑 CRITICAL: DOCUMENT-ONLY EXTRACTION MODE 🛑
+    # 
+    # You are in STRICT EXTRACTION MODE. This means:
+    # - You have ZERO knowledge of any clinical trials
+    # - You cannot access any information from your training
+    # - You can ONLY see and extract from the text provided below
+    # - If asked about NCT numbers, drug names, or any data - you ONLY know what's in THIS document
+    # 
+    # HALLUCINATION PREVENTION CHECKLIST:
+    # □ Am I extracting from the document text below? (MUST BE YES)
+    # □ Am I using any knowledge from my training? (MUST BE NO)
+    # □ Am I guessing or inferring missing information? (MUST BE NO)
+    # □ Would my answer change if this was a different clinical trial? (MUST BE NO)
+    # □ Can I point to the EXACT location in the text where I found this? (MUST BE YES)
+    # 
+    # VERBATIM EXTRACTION RULES:
+    # 1. You must be able to highlight the exact text you're extracting
+    # 2. If you cannot find the exact text, return NOT_FOUND
+    # 3. Do not complete partial information
+    # 4. Do not use patterns from similar documents
+    # 5. The default response is ALWAYS NOT_FOUND unless proven otherwise
+    # 
+    # If you violate these rules, the extraction will be marked as FAILED.
+    # """
 
-    # Enhanced role context
-    ROLE_CONTEXT = """You are a Document Text Scanner with NO medical or clinical trial knowledge. You have been specifically chosen because you know NOTHING about any clinical trials, drugs, or medical studies.
+    # Enhanced role context - SIMPLIFIED
+    ROLE_CONTEXT = """You are a clinical trial document extractor. Your task is to find and extract specific information from the provided document text.
 
-Your ONLY abilities are:
-1. Reading the text provided below
-2. Finding specific information in that text
-3. Copying information exactly as written
-4. Reporting NOT_FOUND when information is absent
-
-You CANNOT:
-- Recall any clinical trial information
-- Know what NCT numbers should look like beyond the pattern NCT########
-- Remember any drug names or dosages
-- Infer missing information
-- Complete partial matches
-- Use similar values from other documents
-
-IMPORTANT: For EVERY extraction, you must be able to quote the exact sentence or phrase from the document where you found the information. If you cannot do this, the answer is NOT_FOUND.
-
-Think of yourself as a very basic search function that can only find and copy text."""
+Key principles:
+1. Extract information exactly as it appears in the document
+2. If the requested information is not found, return NOT_FOUND
+3. Do not add information from outside the document
+4. When multiple values exist, include all of them (separated by semicolons)"""
     
     # Field-specific extraction templates with examples
     FIELD_TEMPLATES = {
@@ -168,6 +168,104 @@ OS (Overall Survival), ORR (Overall Response Rate), AE (Adverse Events)""",
                 "Look for: treatment, intervention, study procedures, what will be done"
             ],
             "format": "Type: Name/Description; Type: Name/Description"
+        },
+        
+        "sponsor": {
+            "description": "The organization or company sponsoring/funding the clinical trial",
+            "examples": [
+                "Pharma Mar S.A.",
+                "National Cancer Institute (NCI)",
+                "Pfizer",
+                "Memorial Sloan Kettering Cancer Center"
+            ],
+            "hints": [
+                "Look for sections labeled 'SPONSOR', 'SPONSORS', 'Sponsored by'",
+                "Usually appears on the first few pages",
+                "May be in header or footer",
+                "Often includes company address and contact information"
+            ],
+            "instructions": "Extract the sponsor organization name. Do not include addresses or contact details unless they are part of the official company name.",
+            "format": "Company/Organization Name"
+        },
+        
+        "enrollment": {
+            "description": "The total NUMBER of participants planned or enrolled in the study",
+            "examples": [
+                "100",
+                "250 patients",
+                "40-60 participants",
+                "171"
+            ],
+            "hints": [
+                "Look for 'enrollment', 'sample size', 'number of patients', 'participants'",
+                "This is a NUMBER, not a duration",
+                "May appear as 'N=100' or 'n=100'",
+                "Often in study design or statistics section"
+            ],
+            "instructions": "Extract the NUMBER of participants. Do NOT extract durations like '40 months'. If a range is given (e.g., '100-150'), extract the full range.",
+            "format": "Number or range (e.g., '100' or '100-150')"
+        },
+        
+        "phases": {
+            "description": "The phase of the clinical trial",
+            "examples": [
+                "Phase 2",
+                "Phase 1/Phase 2",
+                "Phase 3",
+                "Phase 4"
+            ],
+            "hints": [
+                "Look for 'Phase' followed by a number",
+                "May be written as Roman numerals (Phase II)",
+                "Usually in title or study design section",
+                "Can be combined phases like 'Phase 1/2'"
+            ],
+            "format": "Phase X or Phase X/Phase Y"
+        },
+        
+        "study_type": {
+            "description": "The type of clinical study",
+            "examples": [
+                "Interventional",
+                "Observational",
+                "Expanded Access"
+            ],
+            "hints": [
+                "Look for 'study type', 'trial type', 'study design'",
+                "Interventional studies test treatments",
+                "Observational studies observe without intervention"
+            ],
+            "format": "Study type"
+        },
+        
+        "sex": {
+            "description": "Gender eligibility for the study",
+            "examples": [
+                "All",
+                "Female",
+                "Male"
+            ],
+            "hints": [
+                "Look in eligibility criteria section",
+                "May say 'both sexes', 'males and females', 'women only'",
+                "If not specified, likely 'All'"
+            ],
+            "format": "All, Female, or Male"
+        },
+        
+        "age": {
+            "description": "Age eligibility range for the study",
+            "examples": [
+                "18 Years and older",
+                "18 Years to 65 Years",
+                "Child, Adult, Older Adult"
+            ],
+            "hints": [
+                "Look in eligibility criteria",
+                "May specify minimum and/or maximum age",
+                "May use categories like 'pediatric', 'adult'"
+            ],
+            "format": "Age range or categories"
         }
     }
     
