@@ -14,7 +14,6 @@ ENV/
 # Results and data
 results/
 checkpoints/
-examples/
 *.pdf
 *.json
 *.csv
