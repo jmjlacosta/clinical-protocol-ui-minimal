@@ -16,7 +16,6 @@ from .enhanced_prompt_builder_v2 import EnhancedPromptBuilderV2 as EnhancedPromp
 from .intelligent_comparator import IntelligentComparator
 from .smart_outcome_extractor import SmartOutcomeExtractor
 from .smart_validator import SmartValidator
-from .filename_extractor import FilenameExtractor
 from .chunked_extractor import ChunkedExtractor
 from .intelligent_chunker import IntelligentChunker
 from .chunk_mapper import ChunkMapper
@@ -50,8 +49,6 @@ class IncrementalExtractor:
         # Initialize smart validator
         self.validator = SmartValidator()
         
-        # Initialize filename extractor
-        self.filename_extractor = FilenameExtractor()
         
         # Initialize chunked extractor for large documents
         self.chunked_extractor = ChunkedExtractor()
@@ -118,27 +115,7 @@ class IncrementalExtractor:
                     status=ExtractionStatus.PENDING
                 )
             
-            # Extract metadata from filename
-            filename_metadata = self.filename_extractor.extract_all(pdf_path)
-            
-            # Pre-populate NCT number from filename if available
-            if 'nct_number' in filename_metadata:
-                filename_nct = filename_metadata['nct_number']
-                logger.info(f"Pre-populating NCT number from filename: {filename_nct}")
-                
-                checkpoint.fields['nct_number'] = FieldExtraction(
-                    field_name='nct_number',
-                    value=filename_nct,
-                    status=ExtractionStatus.COMPLETED,
-                    extraction_time=datetime.now(),
-                    confidence=1.0,
-                    source_text=f"Extracted from filename: {os.path.basename(pdf_path)}"
-                )
-                checkpoint.completed_fields += 1
-            
-            # Add study codes as potential other_ids hint
-            if 'study_codes' in filename_metadata:
-                logger.info(f"Found potential study identifiers in filename: {filename_metadata['study_codes']}")
+            # Filename context is now handled by chunks
             
             self.checkpoint_manager.save_checkpoint(checkpoint)
         
@@ -152,8 +129,9 @@ class IncrementalExtractor:
         
         # Use intelligent chunking
         logger.info("Using intelligent chunking for extraction")
-        # Create chunks
-        document_chunks = self.intelligent_chunker.chunk_document(pdf_text)
+        # Create chunks with filename context
+        filename = os.path.basename(pdf_path)
+        document_chunks = self.intelligent_chunker.chunk_document(pdf_text, filename=filename)
         
         # Analyze chunks to find field locations
         logger.info(f"Analyzing {len(document_chunks)} chunks for field mapping...")
@@ -201,14 +179,7 @@ class IncrementalExtractor:
                         logger.info(f"No chunk mapping for {field_name}, using full document")
                         value = self._extract_single_field(field_name, pdf_text, pdf_type, pdf_path)
                     
-                    # Validate against filename for NCT number
-                    if field_name == 'nct_number' and value:
-                        is_valid, corrected_value = self.filename_extractor.validate_extraction(
-                            field_name, value, pdf_path
-                        )
-                        if not is_valid:
-                            logger.warning(f"NCT validation failed, using filename value: {corrected_value}")
-                            value = corrected_value
+                    # No special validation needed - filename is in chunk context
                     
                     self.checkpoint_manager.update_field_status(
                         checkpoint, field_name, 
@@ -340,14 +311,8 @@ class IncrementalExtractor:
                 # For other fields, use beginning of document
                 truncated_text = text[:max_chars]
         
-        # Add filename hints if available
-        filename_hints = ""
-        if pdf_path and field_name == "nct_number":
-            filename_nct = self.filename_extractor.extract_nct_number(pdf_path)
-            if filename_nct:
-                filename_hints = f"\n\nIMPORTANT: The filename contains '{filename_nct}'. Verify if this matches the NCT number in the document text. If you cannot find any NCT number in the text, return NOT_FOUND."
-            
-        prompt = self.prompt_builder.build_single_field_prompt(field_name, truncated_text + filename_hints, doc_type)
+        # Build prompt (filename context is already in chunk text)
+        prompt = self.prompt_builder.build_single_field_prompt(field_name, truncated_text, doc_type)
         
         try:
             response = self.client.chat.completions.create(

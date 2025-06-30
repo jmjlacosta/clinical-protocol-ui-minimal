@@ -2,6 +2,7 @@
 import logging
 from typing import List, Dict, Optional, Tuple
 import re
+from .field_descriptions import get_field_context, get_extraction_hints
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,17 @@ FIELD TO EXTRACT: {field_name}
 FIELD DETAILS:
 - Description: {template.get('description', f'Extract {field_name}')}
 """
+        
+        # Add field-specific context
+        field_context = get_field_context(field_name)
+        if field_context:
+            prompt += f"\n=== WHAT THIS FIELD MEANS ===\n{field_context}\n"
+        
+        extraction_hints = get_extraction_hints(field_name)
+        if extraction_hints:
+            prompt += "\n=== HOW TO FIND IT ===\n"
+            for hint in extraction_hints:
+                prompt += f"• {hint}\n"
         
         # Extra warning for NCT number
         if field_name == "nct_number":
