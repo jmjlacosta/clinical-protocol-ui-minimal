@@ -7,7 +7,6 @@ from typing import List, Tuple, Optional
 from pathlib import Path
 
 from .extractor import IncrementalExtractor
-from .checkpoint_manager import CheckpointManager
 
 # Configure logging
 logging.basicConfig(

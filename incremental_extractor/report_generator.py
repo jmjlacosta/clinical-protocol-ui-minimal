@@ -7,7 +7,6 @@ from typing import List, Dict, Optional
 from pathlib import Path
 
 from .schema import StudyComparison, ExtractionCheckpoint
-from .checkpoint_manager import CheckpointManager
 
 class ReportGenerator:
     """Generate reports from extraction and comparison results"""

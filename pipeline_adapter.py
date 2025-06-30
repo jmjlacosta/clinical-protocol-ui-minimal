@@ -14,7 +14,6 @@ import csv
 
 from agents.orchestrator.main import extract_info as extract_info_legacy
 from incremental_extractor.extractor import IncrementalExtractor
-from incremental_extractor.checkpoint_manager import CheckpointManager
 from unified_extractor_enhanced import EnhancedUnifiedExtractor
 
 logger = logging.getLogger(__name__)
@@ -41,11 +40,8 @@ class PipelineAdapter:
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(exist_ok=True)
         
-        # Initialize components
-        self.checkpoint_manager = CheckpointManager(str(self.results_dir / "extractions"))
-        
         # Check for API key
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
         
     def extract_nct_number(self, filename: str) -> Optional[str]:
         """Extract NCT number from filename"""
@@ -147,27 +143,52 @@ class PipelineAdapter:
                 import shutil
                 shutil.copy2(pdf_path, dest_path)
                 
-                # Run extraction using subprocess
-                cmd = ["python3", "run_incremental_extraction.py", 
-                       "--nct", job.nct_number, 
-                       "--pdf-type", doc_type]
-                
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                
-                if result.returncode == 0:
-                    # Load checkpoint
-                    checkpoint_file = Path("checkpoints") / f"{job.nct_number}_{doc_type.lower()}_checkpoint.json"
-                    if checkpoint_file.exists():
-                        with open(checkpoint_file, 'r') as f:
-                            checkpoint = json.load(f)
-                            all_extractions[doc_type] = checkpoint
-                            
-                            # Copy checkpoint to results directory
-                            dest_checkpoint = nct_dir / "checkpoints" / checkpoint_file.name
-                            dest_checkpoint.parent.mkdir(exist_ok=True)
-                            shutil.copy2(checkpoint_file, dest_checkpoint)
-                else:
-                    logger.error(f"Extraction failed for {doc_type}: {result.stderr}")
+                # Run extraction directly using IncrementalExtractor
+                try:
+                    incremental_extractor = IncrementalExtractor(api_key=self.api_key)
+                    
+                    # Look for CT.gov CSV
+                    ctgov_csv_path = None
+                    csv_files = list(examples_dir.glob(f"{job.nct_number}_ct_*.csv"))
+                    if csv_files:
+                        ctgov_csv_path = str(csv_files[0])
+                    
+                    # Extract from PDF
+                    checkpoint = incremental_extractor.extract_from_pdf(
+                        pdf_path=str(dest_path),
+                        nct_number=job.nct_number,
+                        pdf_type=doc_type,
+                        resume=False,  # Always start fresh
+                        compare_immediately=True,
+                        ctgov_csv_path=ctgov_csv_path
+                    )
+                    
+                    # Convert checkpoint to dict for compatibility
+                    extraction_dict = {
+                        'nct_number': checkpoint.nct_number,
+                        'pdf_type': checkpoint.pdf_type,
+                        'fields': {
+                            field_name: {
+                                'value': field.value,
+                                'status': field.status.value,
+                                'extraction_time': field.extraction_time.isoformat() if field.extraction_time else None
+                            }
+                            for field_name, field in checkpoint.fields.items()
+                        },
+                        'completed_fields': checkpoint.completed_fields,
+                        'total_fields': checkpoint.total_fields,
+                        'progress_percentage': checkpoint.progress_percentage
+                    }
+                    
+                    all_extractions[doc_type] = extraction_dict
+                    
+                    # Save extraction result to results directory
+                    extraction_file = nct_dir / f"{job.nct_number}_{doc_type.lower()}_extraction.json"
+                    with open(extraction_file, 'w') as f:
+                        json.dump(extraction_dict, f, indent=2)
+                    
+                except Exception as e:
+                    logger.error(f"Extraction failed for {doc_type}: {e}")
             
             if progress_callback:
                 progress_callback(70, "Merging extractions...")
