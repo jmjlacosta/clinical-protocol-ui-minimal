@@ -1,7 +1,7 @@
 """
 Enhanced UI for viewing extraction results with intelligent comparison.
 
-Run with: streamlit run ui/extraction_viewer.py
+Run with: streamlit run extraction_viewer.py
 """
 
 import streamlit as st

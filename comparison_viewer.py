@@ -1,7 +1,7 @@
 """
 Visual comparison tool for extracted vs ClinicalTrials.gov data.
 
-Run with: streamlit run ui/comparison_viewer.py
+Run with: streamlit run comparison_viewer.py
 """
 
 import streamlit as st
