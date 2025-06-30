@@ -28,10 +28,10 @@ class IncrementalExtractor:
     def __init__(self, checkpoint_dir: str = "checkpoints", api_key: Optional[str] = None):
         self.checkpoint_manager = CheckpointManager(checkpoint_dir)
         self.prompt_builder = EnhancedPromptBuilder()
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
         
         if not self.api_key:
-            raise ValueError("OpenAI API key must be provided or set in OPENAI_API_KEY environment variable")
+            raise ValueError("OpenAI API key must be provided or set in API_KEY or OPENAI_API_KEY environment variable")
         
         # Initialize OpenAI
         try:
