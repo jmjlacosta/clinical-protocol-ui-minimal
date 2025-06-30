@@ -51,13 +51,15 @@ class IntelligentChunker:
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
         
-    def chunk_document(self, text: str, page_breaks: Optional[List[int]] = None) -> List[DocumentChunk]:
+    def chunk_document(self, text: str, page_breaks: Optional[List[int]] = None, 
+                      filename: Optional[str] = None) -> List[DocumentChunk]:
         """
         Split document into overlapping chunks.
         
         Args:
             text: Full document text
             page_breaks: List of character positions where pages break
+            filename: Optional filename to include as context
             
         Returns:
             List of DocumentChunk objects
@@ -91,10 +93,16 @@ class IntelligentChunker:
             # Determine which pages this chunk spans
             page_numbers = self._get_page_numbers(start_pos, end_pos, page_breaks)
             
+            # Add filename context if provided
+            if filename:
+                chunk_text_with_context = f"[FILENAME: {filename}]\n\n{chunk_text}"
+            else:
+                chunk_text_with_context = chunk_text
+            
             # Create chunk
             chunk = DocumentChunk(
                 chunk_id=chunk_id,
-                text=chunk_text,
+                text=chunk_text_with_context,
                 start_char=start_pos,
                 end_char=end_pos,
                 page_numbers=page_numbers
