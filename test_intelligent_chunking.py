@@ -9,7 +9,6 @@ import sys
 import logging
 from incremental_extractor.intelligent_chunker import IntelligentChunker
 from incremental_extractor.chunk_mapper import ChunkMapper
-from incremental_extractor.config import config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -137,17 +136,6 @@ def test_intelligent_chunking():
     else:
         logger.warning("No OpenAI API key found. Skipping chunk analysis test.")
         logger.info("Set OPENAI_API_KEY environment variable to test chunk analysis.")
-    
-    # Test 3: Configuration
-    logger.info("\n4. Testing Configuration")
-    logger.info(f"Current config: {config.get_chunk_config()}")
-    
-    # Test enabling/disabling
-    config.enable_intelligent_chunking()
-    logger.info(f"After enabling: use_intelligent_chunking = {config.use_intelligent_chunking}")
-    
-    config.disable_intelligent_chunking()
-    logger.info(f"After disabling: use_intelligent_chunking = {config.use_intelligent_chunking}")
     
     logger.info("\n=== Test Complete ===")
 
