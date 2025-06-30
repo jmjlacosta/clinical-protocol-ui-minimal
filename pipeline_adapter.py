@@ -119,10 +119,6 @@ class PipelineAdapter:
             # Initialize enhanced extractor
             extractor = EnhancedUnifiedExtractor()
             
-            # Create extraction directory for this NCT
-            nct_dir = self.results_dir / "extractions" / job.nct_number
-            nct_dir.mkdir(parents=True, exist_ok=True)
-            
             # Run extraction for each document
             all_extractions = {}
             total_docs = len(pdf_paths)
@@ -132,30 +128,21 @@ class PipelineAdapter:
                     progress = 10 + (idx / total_docs) * 60  # 10-70% for extraction
                     progress_callback(progress, f"Extracting from {doc_type}...")
                 
-                # Save PDF to examples directory (expected by extractor)
-                examples_dir = Path("examples")
-                examples_dir.mkdir(exist_ok=True)
-                
-                # Copy PDF with proper naming
-                dest_filename = f"{job.nct_number}_{doc_type}_{Path(pdf_path).name}"
-                dest_path = examples_dir / dest_filename
-                
-                import shutil
-                shutil.copy2(pdf_path, dest_path)
-                
                 # Run extraction directly using IncrementalExtractor
                 try:
                     incremental_extractor = IncrementalExtractor(api_key=self.api_key)
                     
-                    # Look for CT.gov CSV
+                    # Look for CT.gov CSV in examples directory
                     ctgov_csv_path = None
-                    csv_files = list(examples_dir.glob(f"{job.nct_number}_ct_*.csv"))
-                    if csv_files:
-                        ctgov_csv_path = str(csv_files[0])
+                    examples_dir = Path("examples")
+                    if examples_dir.exists():
+                        csv_files = list(examples_dir.glob(f"{job.nct_number}_ct_*.csv"))
+                        if csv_files:
+                            ctgov_csv_path = str(csv_files[0])
                     
-                    # Extract from PDF
+                    # Extract from PDF using temp path directly
                     checkpoint = incremental_extractor.extract_from_pdf(
-                        pdf_path=str(dest_path),
+                        pdf_path=pdf_path,  # Use temp file directly
                         nct_number=job.nct_number,
                         pdf_type=doc_type,
                         resume=False,  # Always start fresh
@@ -182,11 +169,6 @@ class PipelineAdapter:
                     
                     all_extractions[doc_type] = extraction_dict
                     
-                    # Save extraction result to results directory
-                    extraction_file = nct_dir / f"{job.nct_number}_{doc_type.lower()}_extraction.json"
-                    with open(extraction_file, 'w') as f:
-                        json.dump(extraction_dict, f, indent=2)
-                    
                 except Exception as e:
                     logger.error(f"Extraction failed for {doc_type}: {e}")
             
@@ -204,10 +186,7 @@ class PipelineAdapter:
                     ctgov_csv = csv_files[0]
                 
                 if progress_callback:
-                    progress_callback(85, "Generating comparison report...")
-                
-                # Generate report (saves directly to results directory)
-                extractor.generate_enhanced_report(job.nct_number, unified_data)
+                    progress_callback(85, "Finalizing extraction...")
                 
                 # Load CT.gov data for comparison if available
                 ctgov_data = {}
@@ -220,7 +199,7 @@ class PipelineAdapter:
                     'status': 'success',
                     'unified_data': unified_data,
                     'ctgov_data': ctgov_data,
-                    'report_path': str(nct_dir / "unified" / f"{job.nct_number}_unified_report.md")
+                    'report_path': None  # Not saving to disk
                 }
             else:
                 return {
