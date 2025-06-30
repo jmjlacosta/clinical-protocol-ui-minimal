@@ -3,7 +3,7 @@ import re
 import json
 import logging
 from typing import List, Dict, Optional
-import openai
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class SmartOutcomeExtractor:
     
     def __init__(self, api_key: str):
         self.api_key = api_key
-        openai.api_key = api_key
+        self.client = OpenAI(api_key=api_key)
     
     def extract_outcomes(self, text: str, outcome_type: str) -> List[str]:
         """
@@ -44,7 +44,7 @@ Here is the text:
 """
         
         try:
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
@@ -57,7 +57,7 @@ Here is the text:
                 max_tokens=1000
             )
             
-            outcomes_result = response['choices'][0]['message']['content'].strip()
+            outcomes_result = response.choices[0].message.content.strip()
             
             # Parse JSON response
             try:
@@ -107,7 +107,7 @@ DO NOT include any other text, explanations, or apologies.
 {text[:15000]}
 """
             
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": count_prompt}],
                 temperature=0.0,
@@ -132,7 +132,7 @@ Return ONLY the name/title text with no additional explanation.
 {text[:15000]}
 """
                 
-                response = openai.ChatCompletion.create(
+                response = self.client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": measure_prompt}],
                     temperature=0.0,
@@ -151,7 +151,7 @@ If not specified, return "Not specified".
 {text[:15000]}
 """
                     
-                    response = openai.ChatCompletion.create(
+                    response = self.client.chat.completions.create(
                         model="gpt-3.5-turbo",
                         messages=[{"role": "user", "content": timeframe_prompt}],
                         temperature=0.0,

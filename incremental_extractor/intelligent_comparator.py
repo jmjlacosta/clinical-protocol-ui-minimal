@@ -1,7 +1,7 @@
 """Intelligent comparison using LLM for semantic matching"""
 import logging
 from typing import Tuple, Optional
-import openai
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -9,8 +9,7 @@ class IntelligentComparator:
     """Use LLM to determine if extracted values match CT.gov values semantically"""
     
     def __init__(self, api_key: str):
-        openai.api_key = api_key
-        self.openai = openai
+        self.client = OpenAI(api_key=api_key)
     
     def compare_fields(self, field_name: str, extracted_value: str, 
                       ctgov_value: str) -> Tuple[bool, float, str]:
@@ -53,7 +52,7 @@ Examples:
 """
 
         try:
-            response = self.openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a precise clinical trial data comparison expert. Respond only with the requested JSON format."},
@@ -63,7 +62,7 @@ Examples:
                 max_tokens=150
             )
             
-            result_text = response['choices'][0]['message']['content'].strip()
+            result_text = response.choices[0].message.content.strip()
             
             # Parse JSON response
             import json

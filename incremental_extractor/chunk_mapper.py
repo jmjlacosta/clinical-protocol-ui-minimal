@@ -10,9 +10,10 @@ from dataclasses import dataclass, field
 from .intelligent_chunker import DocumentChunk
 
 try:
-    import openai
+    from openai import OpenAI
+    client = OpenAI()
 except ImportError:
-    openai = None
+    client = None
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ class ChunkMapper:
             model: OpenAI model to use for analysis
         """
         self.model = model
-        if not openai:
+        if not client:
             logger.warning("OpenAI not available, chunk mapping will be disabled")
         
     def analyze_chunk(self, chunk: DocumentChunk) -> ChunkMapping:
@@ -95,7 +96,7 @@ class ChunkMapper:
         Returns:
             ChunkMapping with identified fields
         """
-        if not openai:
+        if not client:
             # Return empty mapping if OpenAI not available
             return ChunkMapping(
                 chunk_id=chunk.chunk_id,
@@ -108,8 +109,8 @@ class ChunkMapper:
         prompt = self._create_analysis_prompt(chunk.text)
         
         try:
-            # Using old API format for compatibility
-            response = openai.ChatCompletion.create(
+            # Using new OpenAI API
+            response = client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a clinical trial document analyzer. Identify which fields from a clinical trial are present in the given text chunk. Always respond with valid JSON."},
@@ -120,7 +121,7 @@ class ChunkMapper:
             )
             
             # Parse response
-            result = json.loads(response['choices'][0]['message']['content'])
+            result = json.loads(response.choices[0].message.content)
             
             # Create mapping
             mapping = ChunkMapping(

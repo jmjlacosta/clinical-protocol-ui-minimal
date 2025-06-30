@@ -36,9 +36,8 @@ class IncrementalExtractor:
         
         # Initialize OpenAI
         try:
-            import openai
-            openai.api_key = self.api_key
-            self.openai = openai
+            from openai import OpenAI
+            self.client = OpenAI(api_key=self.api_key)
         except ImportError:
             raise ImportError("openai package is required. Install with: pip install openai")
         
@@ -351,7 +350,7 @@ class IncrementalExtractor:
         prompt = self.prompt_builder.build_single_field_prompt(field_name, truncated_text + filename_hints, doc_type)
         
         try:
-            response = self.openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",  # Using compatible model for v0.28.0
                 messages=[
                     {"role": "system", "content": "You are a clinical research data extractor. Extract only the requested information from clinical trial documents."},
@@ -361,7 +360,7 @@ class IncrementalExtractor:
                 max_tokens=500
             )
             
-            result = response['choices'][0]['message']['content'].strip()
+            result = response.choices[0].message.content.strip()
             
             # Parse the response
             if "NOT_FOUND" in result.upper() or "NOT FOUND" in result.upper():
@@ -409,7 +408,7 @@ class IncrementalExtractor:
         prompt = self.prompt_builder.build_batch_prompt(field_names, truncated_text, doc_type)
         
         try:
-            response = self.openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a clinical research data extractor. Extract only the requested information from clinical trial documents."},
@@ -419,7 +418,7 @@ class IncrementalExtractor:
                 max_tokens=1000
             )
             
-            result = response['choices'][0]['message']['content'].strip()
+            result = response.choices[0].message.content.strip()
             
             # Parse the response
             parsed_results = self.prompt_builder.parse_extraction_response(result, field_names)
