@@ -74,7 +74,7 @@ class ChunkMapper:
         'study_status'
     ]
     
-    def __init__(self, model: str = "gpt-3.5-turbo-0125"):
+    def __init__(self, model: str = "gpt-3.5-turbo"):
         """
         Initialize the chunk mapper.
         
@@ -82,10 +82,7 @@ class ChunkMapper:
             model: OpenAI model to use for analysis
         """
         self.model = model
-        if openai:
-            self.client = openai.OpenAI()
-        else:
-            self.client = None
+        if not openai:
             logger.warning("OpenAI not available, chunk mapping will be disabled")
         
     def analyze_chunk(self, chunk: DocumentChunk) -> ChunkMapping:
@@ -98,7 +95,7 @@ class ChunkMapper:
         Returns:
             ChunkMapping with identified fields
         """
-        if not self.client:
+        if not openai:
             # Return empty mapping if OpenAI not available
             return ChunkMapping(
                 chunk_id=chunk.chunk_id,
@@ -111,18 +108,19 @@ class ChunkMapper:
         prompt = self._create_analysis_prompt(chunk.text)
         
         try:
-            response = self.client.chat.completions.create(
+            # Using old API format for compatibility
+            response = openai.ChatCompletion.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a clinical trial document analyzer. Identify which fields from a clinical trial are present in the given text chunk."},
+                    {"role": "system", "content": "You are a clinical trial document analyzer. Identify which fields from a clinical trial are present in the given text chunk. Always respond with valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                max_tokens=1000
             )
             
             # Parse response
-            result = json.loads(response.choices[0].message.content)
+            result = json.loads(response['choices'][0]['message']['content'])
             
             # Create mapping
             mapping = ChunkMapping(
@@ -223,8 +221,9 @@ class ChunkMapper:
         Returns:
             Formatted prompt
         """
-        # Truncate chunk if too long
-        max_chunk_length = 4000
+        # Truncate chunk if too long for the prompt
+        # We have 4k tokens (~16k chars), but need room for prompt and response
+        max_chunk_length = 6000
         if len(chunk_text) > max_chunk_length:
             chunk_text = chunk_text[:max_chunk_length] + "..."
         

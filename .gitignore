@@ -33,3 +33,6 @@ Thumbs.db
 # Environment
 .env
 *.log
+
+# Test directory
+test/

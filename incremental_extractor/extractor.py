@@ -58,11 +58,12 @@ class IncrementalExtractor:
         self.chunked_extractor = ChunkedExtractor()
         
         # Initialize intelligent chunking
+        # Using 8k chunks to fit within gpt-3.5-turbo's 4k token (16k char) context with prompt overhead
         self.intelligent_chunker = IntelligentChunker(
-            chunk_size=50000,
+            chunk_size=8000,
             overlap_size=1000
         )
-        self.chunk_mapper = ChunkMapper(model="gpt-3.5-turbo-0125")
+        self.chunk_mapper = ChunkMapper(model="gpt-3.5-turbo")
         logger.info("Intelligent chunking initialized")
     
     def extract_from_pdf(self, pdf_path: str, nct_number: str, pdf_type: str,
@@ -184,13 +185,21 @@ class IncrementalExtractor:
                     # Single field extraction
                     field_name = field_group[0]
                     
-                    # Use intelligent chunking
+                    # Try intelligent chunking first if available
+                    value = None
                     if extraction_plan and field_name in extraction_plan:
                         chunk_id = extraction_plan[field_name]
                         chunk_text = document_chunks[chunk_id].text
-                        logger.info(f"Using chunk {chunk_id} for {field_name} (intelligent mapping)")
+                        logger.info(f"Trying chunk {chunk_id} for {field_name} (intelligent mapping)")
                         value = self._extract_single_field(field_name, chunk_text, pdf_type, pdf_path)
+                        
+                        # If not found in chunk, fall back to full document
+                        if not value or value.lower() in ["not found", "not_found"]:
+                            logger.info(f"{field_name} not found in chunk {chunk_id}, falling back to full document")
+                            value = self._extract_single_field(field_name, pdf_text, pdf_type, pdf_path)
                     else:
+                        # No chunk mapping, use full document
+                        logger.info(f"No chunk mapping for {field_name}, using full document")
                         value = self._extract_single_field(field_name, pdf_text, pdf_type, pdf_path)
                     
                     # Validate against filename for NCT number
