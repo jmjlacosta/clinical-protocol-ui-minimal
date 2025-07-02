@@ -10,6 +10,7 @@ import os
 from typing import List, Dict, Any
 import uuid
 from pipeline_adapter import PipelineAdapter, ExtractionJob
+from incremental_extractor.field_equivalence_checker import FieldEquivalenceChecker
 
 # Page config
 st.set_page_config(
@@ -80,6 +81,10 @@ def render_field_comparison(unified_data: Dict[str, Any], ctgov_data: Dict[str, 
         st.warning("No field data available for comparison")
         return
     
+    # Initialize field equivalence checker
+    api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+    equivalence_checker = FieldEquivalenceChecker(api_key) if api_key else None
+    
     # Prepare comparison data
     comparison_data = []
     
@@ -105,25 +110,67 @@ def render_field_comparison(unified_data: Dict[str, Any], ctgov_data: Dict[str, 
         ctgov_value = ctgov_data.get(ctgov_field, '') if ctgov_data else ''
         
         # Determine match status
+        confidence = None
+        explanation = ""
+        
         if not extracted_value:
             status = 'Not Found'
             status_color = '🔴'
         elif not ctgov_value:
             status = 'Unique'
             status_color = '🟡'
-        elif str(extracted_value).lower().strip() == str(ctgov_value).lower().strip():
-            status = 'Match'
-            status_color = '🟢'
         else:
-            status = 'Mismatch'
-            status_color = '🟠'
+            # Both values exist - use ChatGPT comparison if available
+            if equivalence_checker:
+                equivalence_result = equivalence_checker.check_equivalence(
+                    field_name, extracted_value, ctgov_value
+                )
+                
+                if equivalence_result:
+                    # Use ChatGPT result
+                    if equivalence_result.match_status == "MATCH":
+                        status = 'Match'
+                        status_color = '🟢'
+                    elif equivalence_result.match_status == "PARTIAL_MATCH":
+                        status = 'Partial Match'
+                        status_color = '🟡'
+                    else:
+                        status = 'Mismatch'
+                        status_color = '🟠'
+                    
+                    confidence = equivalence_result.confidence
+                    explanation = equivalence_result.explanation
+                else:
+                    # Fallback to simple comparison
+                    if str(extracted_value).lower().strip() == str(ctgov_value).lower().strip():
+                        status = 'Match'
+                        status_color = '🟢'
+                        confidence = 100
+                        explanation = "Exact text match"
+                    else:
+                        status = 'Mismatch'
+                        status_color = '🟠'
+            else:
+                # No API key - use simple comparison
+                if str(extracted_value).lower().strip() == str(ctgov_value).lower().strip():
+                    status = 'Match'
+                    status_color = '🟢'
+                else:
+                    status = 'Mismatch'
+                    status_color = '🟠'
+        
+        # Build status string with confidence if available
+        status_str = f"{status_color} {status}"
+        if confidence is not None:
+            status_str += f" ({confidence}%)"
         
         comparison_data.append({
             'Field': field_name,
-            'Status': f"{status_color} {status}",
+            'Status': status_str,
             'Extracted': str(extracted_value)[:100] + '...' if len(str(extracted_value)) > 100 else str(extracted_value),
             'CT.gov': str(ctgov_value)[:100] + '...' if len(str(ctgov_value)) > 100 else str(ctgov_value),
-            'Source': source_doc
+            'Source': source_doc,
+            'Explanation': explanation
         })
     
     # Display as dataframe
@@ -132,19 +179,39 @@ def render_field_comparison(unified_data: Dict[str, Any], ctgov_data: Dict[str, 
     # Add filters
     col1, col2 = st.columns([1, 3])
     with col1:
+        # Get unique statuses from the dataframe (without confidence percentages)
+        unique_statuses = []
+        for status in df['Status'].unique():
+            # Extract just the emoji and status name (before percentage)
+            base_status = status.split(' (')[0]
+            if base_status not in unique_statuses:
+                unique_statuses.append(base_status)
+        
         status_filter = st.multiselect(
             "Filter by status",
-            options=['🟢 Match', '🟠 Mismatch', '🟡 Unique', '🔴 Not Found'],
-            default=['🟢 Match', '🟠 Mismatch', '🟡 Unique', '🔴 Not Found']
+            options=unique_statuses,
+            default=unique_statuses
         )
     
     # Apply filters
     if status_filter:
-        df = df[df['Status'].isin(status_filter)]
+        # Filter by checking if the status starts with any of the selected filters
+        mask = df['Status'].apply(lambda x: any(x.startswith(f) for f in status_filter))
+        df = df[mask]
     
-    # Display table
+    # Display table with column configuration
+    column_config = {
+        'Field': st.column_config.TextColumn('Field', width='medium'),
+        'Status': st.column_config.TextColumn('Status', width='medium'),
+        'Extracted': st.column_config.TextColumn('Extracted', width='large'),
+        'CT.gov': st.column_config.TextColumn('CT.gov', width='large'),
+        'Source': st.column_config.TextColumn('Source', width='small'),
+        'Explanation': st.column_config.TextColumn('Match Details', width='large')
+    }
+    
     st.dataframe(
         df,
+        column_config=column_config,
         use_container_width=True,
         height=400,
         hide_index=True

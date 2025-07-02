@@ -182,9 +182,12 @@ OS (Overall Survival), ORR (Overall Response Rate), AE (Adverse Events)""",
                 "Look for sections labeled 'SPONSOR', 'SPONSORS', 'Sponsored by'",
                 "Usually appears on the first few pages",
                 "May be in header or footer",
-                "Often includes company address and contact information"
+                "Often includes company address and contact information",
+                "IMPORTANT: Sponsor info may be in an image/logo and not in text",
+                "If sponsor not found, look for Principal Investigator (PI) and their institution",
+                "The institution where the PI works is often the sponsor"
             ],
-            "instructions": "Extract the sponsor organization name. Do not include addresses or contact details unless they are part of the official company name.",
+            "instructions": "Extract the sponsor organization name. If sponsor information is not directly stated (possibly because it's in an image/logo), look for the Principal Investigator or lead researcher and their affiliated institution - this institution is typically the sponsor. Do not include addresses or contact details unless they are part of the official company name.",
             "format": "Company/Organization Name"
         },
         
